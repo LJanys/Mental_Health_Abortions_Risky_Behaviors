@@ -1,7 +1,7 @@
 
-BM_fun<-function(G,sim=3,t,X,Y)#se: calculate standard errors
+BM_fun<-function(G,sim=3,t,X,Y)#The main estimator, including standard errors. 
 {
-#######This function code was adapted to R from the Matlab code by Bonhomme and Manresa (2015) grouped fixed-effects estimator###
+  #######This function code was adapted to R from the Matlab code by Bonhomme and Manresa (2015) grouped fixed-effects estimator###
   K = ifelse(dim(X)[2]>1,dim(X)[2],1)# Number of covariates
   N = length(Y)/t##number of observations
   Resbeta=matrix(0,sim,K)#;empty matrices to store results of the iterative estimator
@@ -57,19 +57,19 @@ BM_fun<-function(G,sim=3,t,X,Y)#se: calculate standard errors
         gi_auxaux[,g] = t(rowSums((RU)))###sum residuals for each individual over all time periods
       }
       gi_class = colMins(t(gi_auxaux))## Integer, column indicator for the class with the smallest residual. 
-  
+      
       for (g in 1:G)
       {
         gi[,g] = gi_class==g
       }
-
+      
       # Step 2: update parameters (ols)
       for (i in 1:N)
       {
         giaux=t(kronecker(diag(t),gi[i,]))
         gitot[((i-1)*t+1):(t*i),] = giaux
       }
-    
+      
       Xtot<-cbind(gitot, X)
       par_new=pinv(Xtot)%*%Y
       A=par_new-par_init
@@ -145,7 +145,7 @@ BM_fun<-function(G,sim=3,t,X,Y)#se: calculate standard errors
   gisum=colSums(gi)
   for(i in 1:N)
   {
-
+    
     for (j in 1:t){ Yt=Y[seq(j,N*t,by=t)]
     Ybar_gt[(i-1)*t+j]=mean(Yt[ginumb==ginumb[i]])
     Xt=as.matrix(X[seq(j,N*t,by=t),],N*t,K)
@@ -284,7 +284,7 @@ opt_group<-function(Y,X,G,theta_par,sigma2,N,t,K,delta,gi_class)####
 }
 
 ##############################################################################################
-####Function: Calculates the group function, the 
+####Function: Calculates the group function, that is an input 
 group.fun<-function(beta_age,lead,lag,ll){
   G=3
   #########group membership equation############
@@ -344,7 +344,7 @@ group.fun<-function(beta_age,lead,lag,ll){
   {
     if (GM[i]==1)
     {
-      pi=0
+      pi=0.2
       A[i]<-rbinom(1,1,pi)
     }
     if (GM[i]==2)
@@ -359,6 +359,7 @@ group.fun<-function(beta_age,lead,lag,ll){
     }
   }
   dummies = model.matrix(~X-1)
+  dummies<-dummies*A
   ####assign individual id's###########################################
   dummies1<-data.frame(cbind(1:n,dummies))
   names(dummies1)<- c("ID",sprintf("%s",seq(1:t)))
@@ -371,7 +372,6 @@ group.fun<-function(beta_age,lead,lag,ll){
   ####I replace the NA's with zeros.#########################################
   df[is.na(df)==T]=0
   ###########################################
-  dummies<-dummies*A
   alpha_gi=matrix(0,t,G)
   a=0
   alpha_gi[,1]=0.01
@@ -382,43 +382,32 @@ group.fun<-function(beta_age,lead,lag,ll){
   plot(alpha_gi[,1],type="l",lty=1,lwd=2,ylim=c(0,1),ylab="P(MH)",xlab="Time")
   lines(alpha_gi[,2],lty=2,lwd=2,col="red")
   lines(alpha_gi[,3],lty=3,lwd=2,col="blue")
- ##This is the group function ending: return: dummies, group assignment. 
+  ##This is the group function ending: return: dummies, group assignment. 
   return(list(GM=GM,dummies=dummies, alpha_gi=alpha_gi,df=df))
 }
 
 
-
-simu_fun<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
+simu_fun<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
 {
   X_t<-matrix(rep(rbinom(n*t,1,0.5),t),n,t)
-  X_p<-matrix(NA,nrow=n*t,ncol=t)
+  X_p<-matrix(NA,nrow=n*t,ncol=t)##This generates some exogenous, time-constant regressors.
   for(i in 1:t)
   {
     X_p[,i]<-rep(X_t[,i],each=t)
   }
-#######Construct the final data matrix################
-  for(i in 1:n)
-  {
-    if(i==1)
-    {
-      X1<-cbind(rep(i,t),1:t,dummies[1,],rep(alpha[i],t),rep(GM[i],t),alpha_gi[,GM[i]])
-    }
-    else{
-      X1<-rbind(X1,cbind(rep(i,t),1:t,dummies[i,],alpha[i],rep(GM[i],t),alpha_gi[,GM[i]]))
-    }
-  }
-  X1<-cbind(X1,X_p,age_new)
-  
+  ######make long versions of the individual fixed effects and the group####  
+  alpha=matrix(rep(t(alpha),n),ncol=ncol(alpha),byrow=TRUE)
+  GM=rep(GM,each=t)
   Y<-c()
   k<-n*t
   pi_x=c()####empty vector generate the predicted probabilities that are bounded by 0 and 1######################
-
   Y_star<-c()##Potentially latent  model/predicted values, otherwise actual dependent var value####  
+  ###transform the 
   for(i in 1:k)
   {
-    Y_star[i]=dummies.age[i,]%*%beta_age_2+dummies_t[i,]%*%beta_time+beta*X1[i,3]+beta_alpha*X1[i,6]+t(X_p[i,])%*%beta1+t(as.numeric(df[i,4:(4+lead-1)]))%*%beta_lead+t(as.numeric(df[i,(4+lead):(4+lead+lag-1)]))%*%beta_lag+lpm*runif(1,-0.5,0.5)+(1-lpm)*rnorm(1,0,1)
+    Y_star[i]=dummies.age[i,]%*%beta_age_2+dummies_t[i,]%*%beta_time+beta*df[i,3]+beta_alpha*alpha[i,GM[i]]+t(X_p[i,])%*%beta1+t(df[i,4:(4+lead-1)])%*%beta_lead+t(df[i,(4+lead):(4+lead+lag-1)])%*%beta_lag+lpm*runif(1,-0.5,0.5)+(1-lpm)*rnorm(1,0,1)
+    #######age_dummies+ time dummies+main effect+
     pi_x[i]=Y_star[i]
-
     if(Y_star[i]<0)
     {
       pi_x[i]=0
@@ -430,12 +419,13 @@ simu_fun<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha,a
     Y[i]=rbinom(1, size=1, prob=pi_x[i])
   }
   print(sum(Y==1))
-  print(cor(X1[,3],X1[,6]))
-  plot(density(Y_star))
+  
+  #print(cor(X1[,3],X1[,6]))####this gives the correlation between the event (value) and the unobserved 
+  # plot(density(Y_star))
   ##############without lpm, Y is the actual values, with lpm=1: Y is a binary value, generated from the latent model##################
   ifelse(lpm==1,Y<-Y, Y<-Y_star)
-  df<-as.data.frame(cbind(Y,X1))
+  df_result<-as.data.frame(cbind(Y,df))
   ######save the data csv forma###################################################################################################################################
-  write.csv(df,file=here("Data_Simulation",paste0(seed,n,"_",beta==0,"_",ll,"_",lpm,"_", "_data_lag.csv",sep="")))###Comment out if not want to save the data set
-  return(df=df)
+  #write.csv(df,file=here("Data_Simulation",paste0(seed,n,"_",beta==0,"_",ll,"_",lpm,"_", "_data_lag.csv",sep="")))###Comment out if not want to save the data set
+  return(df_result=df_result)
 }

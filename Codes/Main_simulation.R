@@ -1,5 +1,5 @@
 #############In this file: how to run the simulations######################
-#############
+############and apply the simulation file. Several dynamic effects can be included. 
 library("plm")
 library("dplyr")
 library("ggplot2")
@@ -10,7 +10,7 @@ library(tidyr)
 library(Rfast)
 library(pracma)
 library(readr)
-source(here("Codes","Simulations_functions.R"))
+source(here("Codes","functions.R"))
 setwd(here("Codes","Data_Simulation"))#####specifies the working directory where the simulation runs are saved: here in the data simulation folder
 ##########################################################################################################################
 ######------------------------------Generate the data--------------#######################################################
@@ -67,7 +67,7 @@ sim.data.fun<-function(sim,n){
     df<-result$df
     tic("sleeping")
     print("falling asleep...")
-    simu_fun(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
+    simu_fun(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
     print("...waking up")
     toc()
   }
