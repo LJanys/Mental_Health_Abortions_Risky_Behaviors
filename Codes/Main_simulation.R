@@ -1,5 +1,9 @@
 #############In this file: how to run the simulations######################
 ############and apply the simulation file. Several dynamic effects can be included. 
+########### Now: re-do the simulation function together with the leads and lags. 
+## check results against time and group specific coefficients###
+
+## 
 library("plm")
 library("dplyr")
 library("ggplot2")
@@ -17,18 +21,19 @@ setwd(here("Codes","Data_Simulation"))#####specifies the working directory where
 ######------------------Specify global parameters of the simulations-------###############################################
 ##########################################################################################################################
 t=10###number of time periods#############################################################################################
-c<-c(-0.05,0.05)###Coefficients for additional time-constant regressors###################################################
+c<-c(-0.1,0.1)###Coefficients for additional time-constant regressors###################################################
 beta1<-sample(c,t,replace=T)
 beta=0#########################The coefficient for abortion/parameter of interest --------------##########################
 lead=5##Number of leads, maximum is 5############################################
 lag=5###Number of lags, maximum is 5
-beta_alpha<-0#####Turns time-varying unobserved heterogeneity on/off. If beta_alpha=1: time-varying unobserved heterogeneity is present
+beta_alpha<-5#####Turns time-varying unobserved heterogeneity on/off. If beta_alpha=1: time-varying unobserved heterogeneity is present
 n=1000#############Number of observations##########
+alpha_i<-rep(0,n)
 lpm=0##If lpm=1: linear probability model, else: numeric
 ####the betas for the leads and lags###Extension for dynamic effects##
-ll<-1######Indicator for lags: if ll=1: leads/lags present############
+ll<-0######Indicator for lags: if ll=1: leads/lags present############
 ifelse(ll==1,beta_lead<-seq(0,0,le=lead),beta_lead<-rep(0,lead))##Coefficient for leads
-ifelse(ll==1,beta_lag<-seq(0.1,0.1,le=lag),beta_lag<-rep(0,lag))##Coefficients for lags
+ifelse(ll==1,beta_lag<-seq(0,0,le=lag),beta_lag<-rep(0,lag))##Coefficients for lags
 beta_age<-1# determines the way that alpha is influenced by the age of the abortion
 ###Make time dummies#########################################################
 time=rep(1:t,n)
@@ -51,7 +56,7 @@ beta_age_2=(seq(0,0,le=dim(dummies.age)[2]))^2
 ########Finish global parameters##############################################
 ##----------------------------Run the simulations: sim times------------------
 ##############################################################################
-sim=10
+sim=100
 x<-seq(1:10000)####Vector of random seeds: replace with custom seeds if desired####
 seed.vec=sample(x,sim)###############
 sim.data.fun<-function(sim,n){
@@ -63,16 +68,18 @@ sim.data.fun<-function(sim,n){
     alpha_gi=result$alpha_gi
     dummies=result$dummies
     alpha=result$alpha
-    age_new=result$age_new
     df<-result$df
     tic("sleeping")
     print("falling asleep...")
-    simu_fun(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
-    print("...waking up")
+    #simu_fun(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
+    simu_fun_2(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
+     print("...waking up")
     toc()
   }
 }
 ######Run the simlations, data files will be saved in the data_simulations folder###############
+n=1000
+sim.data.fun(sim,n)
 n=1500
 sim.data.fun(sim,n)
 n=2000
@@ -86,7 +93,8 @@ sim.data.fun(sim,n)
 #########----------heterogeneity profiles, both BIC's are saved on disk----------#########
 main.sim<-function(n,b,ll)
 {
-  filenames <- list.files(pattern=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_", "_data_lag.csv"))
+  
+  filenames <-list.files(pattern=paste0(n,"_","data_"))#,"_","data_",beta==0,"_",ll,"_",lpm,sep="")) 
   filenames<-sample(filenames,length(filenames))
   ######Read in the G_max, needs to be calculated beforehand
   sigma2<- readRDS(paste0(n,"sigma2"))
@@ -96,28 +104,35 @@ main.sim<-function(n,b,ll)
     DAtA<-read.csv(filenames[j])
     delta_mat<-matrix(NA,t,1)
     theta_1<-c()
-    theta<-matrix(NA,11,1)
+    #theta<-matrix(NA,11,1)
     se<-c()
-    G_star<-1:5
+    G_star<-1:7
     BIC<-c()
     BIC1<-c()
     obj<-c()
     for(i in 1:length(G_star))
     {
-      X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+      X0 = cbind(DAtA$V4 ,DAtA[,9:18])###name this differently in the simulation. also include lags/leads in here? ## time dummies? And age dummies ? 
+      if(time==T)
+      {
+        X0 = cbind(DAtA$V4 ,DAtA[,9:18])#
+      }
+      #X0 = cbind(DAtA$value,DAtA[,5])
+     # X0<-DAtA$value
       Y0 = DAtA$Y
       XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
       YY = Y0
+      #X = as.matrix(cbind(rep(1,t*n),XX));
       X = as.matrix(XX);
-      Y = YY;
+      Y = as.numeric(YY);
       K = ifelse(dim(X)[2]>1,dim(X)[2],1)#
       n = length(Y)/t##number of observations
-      results_tr<-BM_fun(G_star[i],sim=1,10,X,Y)
+      results_tr<-BM_fun(G_star[i],sim=1,t,X,Y)
       gi_class=results_tr$gi_class
       theta_1[i]<-results_tr$beta[1]
       theta_all<-results_tr$beta
       delta<-results_tr$delta
-      theta<-cbind(theta,theta_all)
+      theta<-cbind(theta_1,theta_all)
       delta_mat<-cbind(delta_mat,delta)
       se[i]<-results_tr$se[1]
       ob_group<-opt_group(Y,X,G_star[i],theta_all,sigma2,n,t,K,delta,gi_class)
@@ -137,13 +152,1249 @@ main.sim<-function(n,b,ll)
     print(j)
   }
 }
-b=0######is parameter of interest equal to zero
-ll=0###lags yes/no
-
+b=beta######is parameter of interest equal to zero
+#ll=0###lags yes/no
+main.sim(100,b=beta,ll)
 main.sim(1000,b,ll)
 main.sim(1500,b,ll)
-main.sim(2000,b,ll)
+main.sim(2000,b=beta,ll)
 main.sim(2500,b,ll)
 main.sim(3000,b,ll)
+
+
+#####Record for all files the fixed effects and OLS estimator#######
+n=2000
+t=10
+####need to re-name the pattern for the file names so it works when reading them#####
+
+###the pattern do again
+filenames <-list.files(pattern=paste0(n,"_","data_"))
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  print( coeff_0)
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  print(fe_estim)
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+theta_1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_theta_1_rep"))))))
+OLS<-colMeans(read.table(here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""))))) 
+FE<-colMeans(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""))))))
+
+help<-theta_1%>%
+  group_by(V1) %>%
+  summarize(mean_size = mean(V2, na.rm = TRUE))
+mn = c(OLS[2],FE[2],help$mean_size[1:7])
+mn
+
+
+
+#####Record for all files the fixed effects and OLS estimator#######
+n=1000
+t=10
+filenames <- list.files(pattern=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_", "_data_lag.csv"))
+
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  print( coeff_0)
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  print(fe_estim)
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+theta_1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_theta_1_rep"))))))
+OLS<-colMeans(read.table(here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""))))) 
+FE<-colMeans(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""))))))
+
+help<-theta_1%>%
+  group_by(V1) %>%
+  summarize(mean_size = mean(V2, na.rm = TRUE))
+mn = c(OLS[2],FE[2],help$mean_size[2:5])
+
+#####Record for all files the fixed effects and OLS estimator#######
+n=1500
+t=10
+filenames <- list.files(pattern=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_", "_data_lag.csv"))
+
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  print( coeff_0)
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  print(fe_estim)
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+theta_1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_theta_1_rep"))))))
+OLS<-colMeans(read.table(here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""))))) 
+FE<-colMeans(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""))))))
+
+help<-theta_1%>%
+  group_by(V1) %>%
+  summarize(mean_size = mean(V2, na.rm = TRUE))
+mn = c(OLS[2],FE[2],help$mean_size[1:5])
+mn
+
+
+#####Record for all files the fixed effects and OLS estimator#######
+n=2000
+t=10
+filenames <- list.files(pattern=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_", "_data_lag.csv"))
+
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  print( coeff_0)
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  print(fe_estim)
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+theta_1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_theta_1_rep"))))))
+OLS<-colMeans(read.table(here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""))))) 
+FE<-colMeans(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""))))))
+
+help<-theta_1%>%
+  group_by(V1) %>%
+  summarize(mean_size = mean(V2, na.rm = TRUE))
+mn = c(OLS[2],FE[2],help$mean_size[1:5])
+
+mn
+
+#####Record for all files the fixed effects and OLS estimator#######
+n=2500
+t=10
+filenames <- list.files(pattern=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_", "_data_lag.csv"))
+
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  print( coeff_0)
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  print(fe_estim)
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+theta_1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_theta_1_rep"))))))
+OLS<-colMeans(read.table(here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""))))) 
+FE<-colMeans(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""))))))
+
+help<-theta_1%>%
+  group_by(V1) %>%
+  summarize(mean_size = mean(V2, na.rm = TRUE))
+mn = c(OLS[2],FE[2],help$mean_size[1:5])
+mn
+##################################################
+
+#####Record for all files the fixed effects and OLS estimator#######
+n=3000
+t=10
+filenames <- list.files(pattern=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_", "_data_lag.csv"))
+
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  print( coeff_0)
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  print(fe_estim)
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+theta_1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_theta_1_rep"))))))
+OLS<-colMeans(read.table(here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""))))) 
+FE<-colMeans(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""))))))
+
+help<-theta_1%>%
+  group_by(V1) %>%
+  summarize(mean_size = mean(V2, na.rm = TRUE))
+mn = c(OLS[2],FE[2],help$mean_size[1:5])
+mn
+
+########################
+
+##################################################################
+#####Make some coefficient plots for different sample sizes#######
+###
+
+main.ana<-function(n,b,ll)
+{
+  theta_1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_theta_1_rep"))))))
+  OLS<-colMeans(read.table(here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_ols",sep=""))))) 
+  FE<-colMeans(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_",lpm,"_fe",sep=""))))))
+  help<-theta_1%>%
+    group_by(V1) %>%
+    summarize(mean_size = mean(V2, na.rm = TRUE))
+  mn = c(OLS[2],FE[2],help$mean_size[2:5])
+  #######We can make the analogous plot with Bettinas code#####################
+  se<-as.data.frame(read.table(here("Codes","Data_Simulation",((paste0(n,"_",beta==b,"_",ll,"_",lpm,"_se_rep"))))))
+  help<-se%>%
+    group_by(V1) %>%
+    summarize(mean_size = mean(V2, na.rm = TRUE))
+  se = c(OLS[3],FE[3],help$mean_size[2:5])
+  name = c("OLS", "OLS FE", "GFE G2", "GFE G3", "GFE G4", "GFE G5")
+  ci95_low = mn - 1.96*se
+  ci95_up = mn + 1.96*se
+  dat2 <-data.frame(name, mn,se,ci95_low, ci95_up)
+  dat <- data.frame(name,mn,se)
+  str(dat)
+  pdf(file=here("Abortion_Draft",paste0(n,"_lag","_coeff_plot_sim.pdf")))
+  print(ggplot(dat, aes(name, mn)) + 
+          theme_bw()+
+          geom_hline(yintercept=0, lty=2, lwd=1, colour="black")+
+          geom_errorbar(aes(ymin=mn - 1.96*se, ymax=mn + 1.96*se), lwd=1, colour="red", width=0)+
+          geom_point(size=4, pch=21, fill="black") +
+          labs(x="model coefficients", y="magnitude") +
+          scale_x_discrete(limits = c("OLS", "OLS FE", "GFE G2", "GFE G3", "GFE G4","GFE G5")))
+  dev.off()
+  
+  ########BIC####################################################################
+  BIC<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"BIC"))))))
+  help<-BIC%>%
+    group_by(V1) %>%
+    summarize(mean_size = mean(V2, na.rm = TRUE))
+  highlight.gene <- 3
+  help$highlight <- c("normal","normal","highlight","normal","normal")#ifelse(a$GeneName == highlight.gene, "highlight", "normal")
+  mycolours <- c("highlight" = "red", "normal" = "grey50")
+  textdf <- help[help$V1==3,]
+  
+  pdf(file=here("Abortion_Draft",paste0(n,"_lag","sim_BIC.pdf")))
+  print(ggplot(data = help, aes(x = V1, y = mean_size)) +
+          geom_point(size = 4, aes(colour = highlight)) +
+          scale_color_manual("Status", values = mycolours) +
+          geom_text(data = textdf, aes(x = V1 * 1.2, y = mean_size, label = "True G")) +
+          theme(legend.position = "none") +
+          theme()+
+          labs(x="Number of Groups", y="BIC")  +
+          ylim(2,14))
+  # ylim((min(help$mean_size)-1.5),(max(help$mean_size)+1.5)))
+  dev.off()
+  
+  ########BIC 1####################################################################
+  BIC1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"BIC1"))))))
+  help<-BIC1%>%
+    group_by(V1) %>%
+    summarize(mean_size = mean(V2, na.rm = TRUE))
+  highlight.gene <- 3
+  help$highlight <- c("normal","normal","highlight","normal","normal")#ifelse(a$GeneName == highlight.gene, "highlight", "normal")
+  mycolours <- c("highlight" = "red", "normal" = "black")
+  textdf <- help[help$V1==3,]
+  
+  pdf(file=here("Abortion_Draft",paste0(n,"_lag","sim_BIC1.pdf")))
+  print(ggplot(data = help, aes(x = V1, y = mean_size)) +
+          geom_point(size = 4, aes(colour = highlight)) +
+          scale_color_manual("Status", values = mycolours) +
+          geom_text(data = textdf, aes(x = V1 * 1.1, y = mean_size, label = "True G")) +
+          theme(legend.position = "none") +
+          theme()+
+          ylim(2,14)+
+          labs(x="Number of Groups", y="BIC") )
+  dev.off()
+  ############################################################################
+  # #2000_FALSE_1_delta_mat_rep
+  # delta_mat1<-as.data.frame(read.table((here("Codes","Data_Simulation",(paste0(n,"_",beta==b,"_",ll,"_","delta_mat_rep"))))))
+  # 
+  # delta_mat2<-delta_mat1[,3:dim(delta_mat1)[2]]/10
+  # delta_mat<-cbind(delta_mat1[,1],rep(0,dim(delta_mat2)[1]),delta_mat2)
+  # names(delta_mat[,1])<-c("t")
+  # ##Means of each column by V2
+  # 
+  # ####If we wanted to analyze the averages of the different groups/how this tracks the real curves and what happens 
+  # ####if we introduce other curves, we can first sort them by "magnitude", i.e. some kind of norm.
+  # 
+  # #for one group######
+  # g1<-delta_mat[1:10,3]
+  # pdf(file=here("Abortion_Draft",paste0(n,"g1.pdf")))
+  # plot(g1,ylim=c(min(delta_mat2),max(delta_mat2)),type="l",ylab=expression(alpha[g]),xlab=expression(t),cex.lab=1.1,lwd=2)
+  # dev.off()
+  # ###for two groups
+  # g2<-as.data.frame(delta_mat[1:10,4:5])
+  # g2<-g2[, order(colSums(g2))]
+  # pdf(file=here("Abortion_Draft",paste0(n,"g2.pdf")))
+  # plot(g2[1:10,1],ylim=c(min(delta_mat2),max(delta_mat2)),type="l",ylab=expression(alpha[g]),xlab=expression(t),cex.lab=1.1,lwd=2)
+  # lines(g2[1:10,2],lty=2,col="blue",lwd=2)
+  # dev.off()
+  # ###for three groups
+  # g3<-as.data.frame(delta_mat[1:10,6:8])
+  # g3<-g3[, order(colSums(g3))]####sorts these into the right risk order groups
+  # pdf(file=here("Abortion_Draft",paste0(n,"g3.pdf")))
+  # plot(g3[1:10,1],ylim=c(min(delta_mat2),max(delta_mat2)),type="l",ylab=expression(alpha[g]),xlab=expression(t),cex.lab=1.1,lwd=2)
+  # lines(g3[1:10,2],lty=2,col="red",lwd=2)
+  # lines(g3[1:10,3],lty=2,col="blue",lwd=2)
+  # dev.off()
+  # ###for four groups
+  # 
+  # g4<-as.data.frame(delta_mat[1:10,9:12])
+  # g4<-g4[, order(colSums(g4))]
+  # pdf(file=here("Abortion_Draft",paste0(n,"g4.pdf")))
+  # plot(g4[1:10,1],ylim=c(min(delta_mat2),max(delta_mat2)),type="l",ylab=expression(alpha[g]),xlab=expression(t),cex.lab=1.1,lwd=2)
+  # lines(g4[1:10,2],lty=2,col="green",lwd=2)
+  # lines(g4[1:10,3],lty=2,col="red",lwd=2)
+  # lines(g4[1:10,4],lty=2,col="blue",lwd=2)
+  # dev.off()
+  # ###for five groups
+  # 
+  # g5<-as.data.frame(delta_mat[1:10,13:17])
+  # g5<-g5[, order(colSums(g5))]
+  # pdf(file=here("Abortion_Draft",paste0(n,"g5.pdf")))
+  # plot(g5[1:10,1],ylim=c(min(delta_mat2),max(delta_mat2)),type="l",ylab=expression(alpha[g]),xlab=expression(t),cex.lab=1.1,lwd=2)
+  # lines(g5[1:10,2],lty=2,col="green",lwd=2)
+  # lines(g5[1:10,3],lty=2,col="pink",lwd=2)
+  # lines(g5[1:10,4],lty=2,col="red",lwd=2)
+  # lines(g5[1:10,5],lty=2,col="blue",lwd=2)
+  # dev.off()
+  
+}
+
+
+
+
+main.ana(1000,0,ll=1)
+main.ana(1500,0,ll=1)
+main.ana(2000,0,ll=1)
+main.ana(2500,0,ll=1)
+main.ana(3000,0,ll=1)
+
+#####Record for all files the fixed effects and OLS estimator#######
+t=10
+filenames <- list.files(pattern="1000_data.csv")
+j=1
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(N,"fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(N,"ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+
+
+################for all files with n=10000###########################
+
+rm(list=ls())
+setwd('~/Dropbox/spillovers health/Abortions/Codes/Data_Simulation')
+library("plm")
+library("dplyr")
+library("ggplot2")
+library(data.table)
+library(tictoc)
+library(tidyr)
+library(Rfast)
+library(pracma)
+#library(dplyr)
+library(readr)
+source('~/Dropbox/spillovers health/Abortions/Codes/Data_Simulation/Simulations_GFE_Covariates_3groups.R')
+######Generate the data##########################################################################
+x<-seq(1:10000)
+p=10
+c<-c(-0.2,0.2)
+#s<-rep(0,p)
+beta1<-sample(c,p,replace=T)
+beta=0####The coefficient
+#beta_age<-0.5##the coefficient in the group simulation function that is responsible for  
+lead=2
+lag=9
+beta_alpha<-5
+####the betas for the leads and lags###Extension for dynamic effects##
+ll<-0
+ifelse(ll==1,beta_lead<-seq(1.5,0.5,le=lead),beta_lead<-rep(0,lead))
+ifelse(ll==1,beta_lag<-seq(0.5,1.5,le=lag),beta_lag<-rep(0,lag))
+####
+t<-10
+n=10000
+beta_age<-1# determines the way that alpha is influenced by the age of the abortion
+# result<-group.fun(beta_age,lead,lag)
+# GM=result$GM
+# alpha_gi=result$alpha_gi
+# dummies=result$dummies
+# alpha=result$alpha
+# age_new=result$age_new
+# seed=sample(x,1)
+# df<-result$df
+#seed=402
+#DAtA =simu_fun(n,seed,beta,beta1,beta_alpha,t,p,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag)
+
+#########simulating the data 100 times################
+sim=10
+seed.vec=sample(x,sim)
+for(i in 1:sim)
+{
+  seed=seed.vec[i]
+  result<-group.fun(beta_age,lead,lag)
+  GM=result$GM
+  alpha_gi=result$alpha_gi
+  dummies=result$dummies
+  alpha=result$alpha
+  age_new=result$age_new
+  seed=sample(x,1)
+  df<-result$df
+  tic("sleeping")
+  print("falling asleep...")
+  simu_fun(n,seed,beta,beta1,beta_alpha,t,p,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag)
+  print("...waking up")
+  toc()
+}
+####Calculate the maximum G####
+
+j=1
+#########one example data set##################
+filenames <- list.files(pattern="10000_data.csv")
+DAtA<-read.csv(filenames[j])
+####################################################################################################
+#DAtA = #read.csv('data.csv')
+#X0 = cbind(DAtA$V2,DAtA$V4,DAtA$V3,DAtA$V2)#,DAtA[,9:18]) #,DAtA$X_p,DAtA$V2,DAtA$V3)
+# ##############################################################################################
+X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+Y0 = DAtA$Y
+XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+YY = Y0
+Y=as.matrix(YY)
+X = as.matrix(XX);
+K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+N = length(Y)/t##number of observations
+G=10
+####make this into training and test data####
+results_tr<-BM_fun(G,sim=1,t,X,Y)
+delta=results_tr$delta
+theta_par=results_tr$beta
+#results_test<-BM_fun(G,sim=1,t,X,Y)
+Xbar_gt=results_tr$Xbar_gt
+Ybar_gt=results_tr$Ybar_gt
+gi_class=results_tr$gi_class
+res_gmax<-opt_group_G_max(Y,X,Ybar_gt,Xbar_gt,G,theta_par,N,t,K,delta)
+sigma2<-res_gmax$sigma2
+BIC_G_max<-res_gmax$BIC
+BIC_G_max
+
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  t=10
+  delta_mat<-matrix(NA,t,1)
+  theta_1<-c()
+  theta<-matrix(NA,11,1)
+  se<-c()
+  # main_2<-function(DAtA){
+  G_star<-1:5
+  BIC<-c()
+  obj<-c()
+  for(i in 1:length(G_star))
+  {
+    #DAtA = read.csv('data.csv')
+    X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+    Y0 = DAtA$Y
+    XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+    YY = Y0
+    #clear X Y
+    X = as.matrix(XX);
+    Y = YY;
+    # X<-as.matrix(X[49001:dim(XX)[1],])
+    # Y<-Y[49001:length(Y)]
+    K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+    N = length(Y)/t##number of observations
+    results_tr<-BM_fun(G_star[i],sim=1,10,X,Y)
+    Xbar_gt=results_tr$Xbar_gt
+    Ybar_gt=results_tr$Ybar_gt
+    gi_class=results_tr$gi_class
+    #nam1 <- paste("delta", i, sep = ".")
+    #assign(nam1,results_tr$delta)
+    # nam2 <- paste("theta_par", i, sep = ".")
+    #assign(nam2,results_tr$beta)
+    theta_1[i]<-results_tr$beta[1]
+    theta_all<-results_tr$beta
+    delta<-results_tr$delta
+    theta<-cbind(theta,theta_all)
+    delta_mat<-cbind(delta_mat,delta)
+    se[i]<-results_tr$se[1]
+    ob_group<-opt_group(Y,X,Ybar_gt,Xbar_gt,G_star[i],theta,sigma2,N,t,K,delta,gi_class)
+    BIC[i]=ob_group$BIC
+    obj[i]=ob_group$obj
+  }
+  write.table(theta_1,file=paste0(N,"theta_1_rep",sep=""),col.names = F,append=TRUE)
+  write.table(theta,file=paste0(N,"theta_rep",sep=""),col.names = F,append=TRUE)
+  write.table(se,file=paste0(N,"se_rep",sep=""),col.names = F,append=TRUE)
+  write.table(delta_mat,file=paste0(N,"delta_mat_rep",sep=""),col.names = F,append=TRUE)
+  write.table(BIC,file=paste0(N,"BIC",sep=""),col.names = F,append=TRUE)
+  print(j)
+  #}
+  #main_2(DAtA)
+}
+
+#######Fixed effects and OLS####
+#####Record for all files the fixed effects and OLS estimator#######
+t=10
+filenames <- list.files(pattern="10000_data.csv")
+j=1
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(N,"fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(N,"ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+rm(list=ls())
+setwd('~/Dropbox/spillovers health/Abortions/Codes/Data_Simulation')
+library("plm")
+library("dplyr")
+library("ggplot2")
+library(data.table)
+library(tictoc)
+library(tidyr)
+library(Rfast)
+library(pracma)
+#library(dplyr)
+library(readr)
+source('~/Dropbox/spillovers health/Abortions/Codes/Data_Simulation/Simulations_GFE_Covariates_3groups.R')
+######Generate the data##########################################################################
+x<-seq(1:10000)
+p=10
+c<-c(-0.2,0.2)
+#s<-rep(0,p)
+beta1<-sample(c,p,replace=T)
+beta=0####The coefficient
+#beta_age<-0.5##the coefficient in the group simulation function that is responsible for  
+lead=2
+lag=9
+beta_alpha<-5
+####the betas for the leads and lags###Extension for dynamic effects##
+ll<-0
+ifelse(ll==1,beta_lead<-seq(1.5,0.5,le=lead),beta_lead<-rep(0,lead))
+ifelse(ll==1,beta_lag<-seq(0.5,1.5,le=lag),beta_lag<-rep(0,lag))
+####
+t<-10
+n=1000
+beta_age<-1# determines the way that alpha is influenced by the age of the abortion
+# result<-group.fun(beta_age,lead,lag)
+# GM=result$GM
+# alpha_gi=result$alpha_gi
+# dummies=result$dummies
+# alpha=result$alpha
+# age_new=result$age_new
+# seed=sample(x,1)
+# df<-result$df
+#seed=402
+#DAtA =simu_fun(n,seed,beta,beta1,beta_alpha,t,p,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag)
+
+#########simulating the data 100 times################
+sim=50
+seed.vec=100000:100050
+for(i in 1:sim)
+{
+  seed=seed.vec[i]
+  result<-group.fun(beta_age,lead,lag)
+  GM=result$GM
+  alpha_gi=result$alpha_gi
+  dummies=result$dummies
+  alpha=result$alpha
+  age_new=result$age_new
+  seed=sample(x,1)
+  df<-result$df
+  tic("sleeping")
+  print("falling asleep...")
+  simu_fun(n,seed,beta,beta1,beta_alpha,t,p,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag)
+  print("...waking up")
+  toc()
+}
+
+filenames <- list.files(pattern="1000_data.csv")
+j=1
+#########one example data set##################
+DAtA<-read.csv(filenames[j])
+####################################################################################################
+#DAtA = #read.csv('data.csv')
+#X0 = cbind(DAtA$V2,DAtA$V4,DAtA$V3,DAtA$V2)#,DAtA[,9:18]) #,DAtA$X_p,DAtA$V2,DAtA$V3)
+# ##############################################################################################
+X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+Y0 = DAtA$Y
+XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+YY = Y0
+X = as.matrix(XX);
+#X1<-as.matrix(X[,1])
+Y = YY;
+K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+N = length(Y)/t##number of observations
+result_0<-lm(Y~X,data=df)
+coeff_0<-result_0$coeff
+coeff_0
+df<-data.frame(df,DAtA$age_new)
+# ####Estimate the fixed effect model###########################################################
+#fe_estim <- plm(Y~X,data=df,index = c("V2","V3"), model = "within",effect="twoways")###fixed effects 
+fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+fe_estim$coeff
+summary(fe_estim)
+################################################################################################
+############Estimate the GFE estimator##########################################################
+G=3
+results<-BM_fun(G=3,sim=1,t,X,Y)
+coef<-results$beta
+coef
+se<-results$se
+se
+delta<-results$delta
+gi_class<-results$gi_class
+#################################
+pdf("~/Dropbox/spillovers health/Abortions/Abortion Draft/groups.pdf")
+plot(delta[,1],type="l",lty=1,lwd=2,ylab=expression(alpha[g]),xlab=expression(t),cex.lab=1.1,ylim=c(-1,10))
+lines(delta[,2],lty=2,lwd=2,col="red")
+lines(delta[,3],lty=3,lwd=2,col="blue")
+dev.off()
+
+
+####Calculate the maximum G####
+G=10
+####make this into training and test data####
+results_tr<-BM_fun(G,sim=1,t,X,Y)
+delta=results_tr$delta
+theta_par=results_tr$beta
+#results_test<-BM_fun(G,sim=1,t,X,Y)
+Xbar_gt=results_tr$Xbar_gt
+Ybar_gt=results_tr$Ybar_gt
+gi_class=results_tr$gi_class
+res_gmax<-opt_group_G_max(Y,X,Ybar_gt,Xbar_gt,G,theta_par,N,t,K,delta)
+sigma2<-res_gmax$sigma2
+BIC_G_max<-res_gmax$BIC
+BIC_G_max
+
+BIC<-c()
+obj<-c()
+G_star<-1:5
+for(i in 1:length(G_star))
+{
+  results<-BM_fun(G_star[i],sim=1,t,X,Y)
+  delta=results$delta
+  theta=results$beta
+  gi_res<-gi_fun(G_star[i], theta, delta, X,Y)
+  Xbar_gt= gi_res$Xbar_gt
+  Ybar_gt= gi_res$Ybar_gt
+  gi_class= gi_res$gi_class
+  # theta<-theta_rep[,G_star[i]]
+  # delta<-delta_rep[l_t_start[j]:l_t_end[j],g_start[i]:g_end[i]]
+  # gi_res<-gi_fun(G_star[i], theta, delta, X,Y)
+  # Xbar_gt= gi_res$Xbar_gt
+  # Ybar_gt= gi_res$Ybar_gt
+  # gi_class= gi_res$gi_class
+  #G=G_star[i]
+  ob_group<-opt_group(Y,X,Ybar_gt,Xbar_gt,G_star[i],theta,sigma2,N,t,K,delta,gi_class)
+  BIC[i]=ob_group$BIC
+  obj[i]=ob_group$obj
+}
+
+BIC
+
+################Now for all the simulated files#####################
+
+################for all files with n=1000###########################
+
+rm(list=ls())
+setwd('~/Dropbox/spillovers health/Abortions/Codes/Data_Simulation')
+library("plm")
+library("dplyr")
+library("ggplot2")
+library(data.table)
+library(tictoc)
+library(tidyr)
+library(Rfast)
+library(pracma)
+#library(dplyr)
+library(readr)
+source('~/Dropbox/spillovers health/Abortions/Codes/Data_Simulation/Simulations_GFE_Covariates_3groups.R')
+######Generate the data##########################################################################
+x<-seq(1:10000)
+p=10
+c<-c(-0.2,0.2)
+#s<-rep(0,p)
+beta1<-sample(c,p,replace=T)
+beta=0####The coefficient
+#beta_age<-0.5##the coefficient in the group simulation function that is responsible for  
+lead=2
+lag=9
+beta_alpha<-5
+####the betas for the leads and lags###Extension for dynamic effects##
+ll<-0
+ifelse(ll==1,beta_lead<-seq(1.5,0.5,le=lead),beta_lead<-rep(0,lead))
+ifelse(ll==1,beta_lag<-seq(0.5,1.5,le=lag),beta_lag<-rep(0,lag))
+####
+t<-10
+n=2000
+beta_age<-1# determines the way that alpha is influenced by the age of the abortion
+# result<-group.fun(beta_age,lead,lag)
+# GM=result$GM
+# alpha_gi=result$alpha_gi
+# dummies=result$dummies
+# alpha=result$alpha
+# age_new=result$age_new
+# seed=sample(x,1)
+# df<-result$df
+#seed=402
+#DAtA =simu_fun(n,seed,beta,beta1,beta_alpha,t,p,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag)
+
+#########simulating the data 100 times################
+sim=100
+seed.vec=sample(x,sim)
+for(i in 1:sim)
+{
+  seed=seed.vec[i]
+  result<-group.fun(beta_age,lead,lag)
+  GM=result$GM
+  alpha_gi=result$alpha_gi
+  dummies=result$dummies
+  alpha=result$alpha
+  age_new=result$age_new
+  seed=sample(x,1)
+  df<-result$df
+  tic("sleeping")
+  print("falling asleep...")
+  simu_fun(n,seed,beta,beta1,beta_alpha,t,p,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag)
+  print("...waking up")
+  toc()
+}
+####Calculate the maximum G####
+
+j=1
+#########one example data set##################
+filenames <- list.files(pattern="2000_data.csv")
+DAtA<-read.csv(filenames[j])
+
+
+####################################################################################################
+#DAtA = #read.csv('data.csv')
+#X0 = cbind(DAtA$V2,DAtA$V4,DAtA$V3,DAtA$V2)#,DAtA[,9:18]) #,DAtA$X_p,DAtA$V2,DAtA$V3)
+# ##############################################################################################
+X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+Y0 = DAtA$Y
+XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+YY = Y0
+Y=as.matrix(YY)
+X = as.matrix(XX);
+K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+N = length(Y)/t##number of observations
+G=10
+####make this into training and test data####
+results_tr<-BM_fun(G,sim=1,t,X,Y)
+delta=results_tr$delta
+theta_par=results_tr$beta
+#results_test<-BM_fun(G,sim=1,t,X,Y)
+Xbar_gt=results_tr$Xbar_gt
+Ybar_gt=results_tr$Ybar_gt
+gi_class=results_tr$gi_class
+res_gmax<-opt_group_G_max(Y,X,Ybar_gt,Xbar_gt,G,theta_par,N,t,K,delta)
+sigma2<-res_gmax$sigma2
+BIC_G_max<-res_gmax$BIC
+BIC_G_max
+
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  t=10
+  delta_mat<-matrix(NA,t,1)
+  theta_1<-c()
+  theta<-matrix(NA,11,1)
+  se<-c()
+  # main_2<-function(DAtA){
+  G_star<-1:5
+  BIC<-c()
+  obj<-c()
+  for(i in 1:length(G_star))
+  {
+    #DAtA = read.csv('data.csv')
+    X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+    Y0 = DAtA$Y
+    XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+    YY = Y0
+    #clear X Y
+    X = as.matrix(XX);
+    Y = YY;
+    # X<-as.matrix(X[49001:dim(XX)[1],])
+    # Y<-Y[49001:length(Y)]
+    K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+    N = length(Y)/t##number of observations
+    results_tr<-BM_fun(G_star[i],sim=1,10,X,Y)
+    Xbar_gt=results_tr$Xbar_gt
+    Ybar_gt=results_tr$Ybar_gt
+    gi_class=results_tr$gi_class
+    #nam1 <- paste("delta", i, sep = ".")
+    #assign(nam1,results_tr$delta)
+    # nam2 <- paste("theta_par", i, sep = ".")
+    #assign(nam2,results_tr$beta)
+    theta_1[i]<-results_tr$beta[1]
+    theta_all<-results_tr$beta
+    delta<-results_tr$delta
+    theta<-cbind(theta,theta_all)
+    delta_mat<-cbind(delta_mat,delta)
+    se[i]<-results_tr$se[1]
+    ob_group<-opt_group(Y,X,Ybar_gt,Xbar_gt,G_star[i],theta,sigma2,N,t,K,delta,gi_class)
+    BIC[i]=ob_group$BIC
+    obj[i]=ob_group$obj
+  }
+  write.table(theta_1,file=paste0(N,"theta_1_rep",sep=""),col.names = F,append=TRUE)
+  write.table(theta,file=paste0(N,"theta_rep",sep=""),col.names = F,append=TRUE)
+  write.table(se,file=paste0(N,"se_rep",sep=""),col.names = F,append=TRUE)
+  write.table(delta_mat,file=paste0(N,"delta_mat_rep",sep=""),col.names = F,append=TRUE)
+  write.table(BIC,file=paste0(N,"BIC",sep=""),col.names = F,append=TRUE)
+  print(j)
+  #}
+  #main_2(DAtA)
+}
+
+#####Record for all files the fixed effects and OLS estimator#######
+t=10
+filenames <- list.files(pattern="2000_data.csv")
+j=1
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(N,"fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(N,"ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+
+
+
+################for all files with n=1000###########################
+
+rm(list=ls())
+setwd('~/Dropbox/spillovers health/Abortions/Codes/Data_Simulation')
+library("plm")
+library("dplyr")
+library("ggplot2")
+library(data.table)
+library(tictoc)
+library(tidyr)
+library(Rfast)
+library(pracma)
+#library(dplyr)
+library(readr)
+source('~/Dropbox/spillovers health/Abortions/Codes/Data_Simulation/Simulations_GFE_Covariates_3groups.R')
+######Generate the data##########################################################################
+x<-seq(1:10000)
+p=10
+c<-c(-0.2,0.2)
+#s<-rep(0,p)
+beta1<-sample(c,p,replace=T)
+beta=0####The coefficient
+#beta_age<-0.5##the coefficient in the group simulation function that is responsible for  
+lead=2
+lag=9
+beta_alpha<-5
+####the betas for the leads and lags###Extension for dynamic effects##
+ll<-0
+ifelse(ll==1,beta_lead<-seq(1.5,0.5,le=lead),beta_lead<-rep(0,lead))
+ifelse(ll==1,beta_lag<-seq(0.5,1.5,le=lag),beta_lag<-rep(0,lag))
+####
+t<-10
+n=1500
+beta_age<-1# determines the way that alpha is influenced by the age of the abortion
+# result<-group.fun(beta_age,lead,lag)
+# GM=result$GM
+# alpha_gi=result$alpha_gi
+# dummies=result$dummies
+# alpha=result$alpha
+# age_new=result$age_new
+# seed=sample(x,1)
+# df<-result$df
+#seed=402
+#DAtA =simu_fun(n,seed,beta,beta1,beta_alpha,t,p,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag)
+
+#########simulating the data 100 times################
+sim=25
+seed.vec=sample(x,sim)
+for(i in 1:sim)
+{
+  seed=seed.vec[i]
+  result<-group.fun(beta_age,lead,lag)
+  GM=result$GM
+  alpha_gi=result$alpha_gi
+  dummies=result$dummies
+  alpha=result$alpha
+  age_new=result$age_new
+  seed=sample(x,1)
+  df<-result$df
+  tic("sleeping")
+  print("falling asleep...")
+  simu_fun(n,seed,beta,beta1,beta_alpha,t,p,G,GM,dummies, alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag)
+  print("...waking up")
+  toc()
+}
+####Calculate the maximum G####
+
+j=1
+#########one example data set##################
+filenames <- list.files(pattern="1500_data.csv")
+DAtA<-read.csv(filenames[j])
+
+
+####################################################################################################
+#DAtA = #read.csv('data.csv')
+#X0 = cbind(DAtA$V2,DAtA$V4,DAtA$V3,DAtA$V2)#,DAtA[,9:18]) #,DAtA$X_p,DAtA$V2,DAtA$V3)
+# ##############################################################################################
+X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+Y0 = DAtA$Y
+XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+YY = Y0
+Y=as.matrix(YY)
+X = as.matrix(XX);
+K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+N = length(Y)/t##number of observations
+G=10
+####make this into training and test data####
+results_tr<-BM_fun(G,sim=1,t,X,Y)
+delta=results_tr$delta
+theta_par=results_tr$beta
+#results_test<-BM_fun(G,sim=1,t,X,Y)
+Xbar_gt=results_tr$Xbar_gt
+Ybar_gt=results_tr$Ybar_gt
+gi_class=results_tr$gi_class
+res_gmax<-opt_group_G_max(Y,X,Ybar_gt,Xbar_gt,G,theta_par,N,t,K,delta)
+sigma2<-res_gmax$sigma2
+BIC_G_max<-res_gmax$BIC
+BIC_G_max
+
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  t=10
+  delta_mat<-matrix(NA,t,1)
+  theta_1<-c()
+  theta<-matrix(NA,11,1)
+  se<-c()
+  # main_2<-function(DAtA){
+  G_star<-1:5
+  BIC<-c()
+  obj<-c()
+  for(i in 1:length(G_star))
+  {
+    #DAtA = read.csv('data.csv')
+    X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+    Y0 = DAtA$Y
+    XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+    YY = Y0
+    #clear X Y
+    X = as.matrix(XX);
+    Y = YY;
+    # X<-as.matrix(X[49001:dim(XX)[1],])
+    # Y<-Y[49001:length(Y)]
+    K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+    N = length(Y)/t##number of observations
+    results_tr<-BM_fun(G_star[i],sim=1,10,X,Y)
+    Xbar_gt=results_tr$Xbar_gt
+    Ybar_gt=results_tr$Ybar_gt
+    gi_class=results_tr$gi_class
+    #nam1 <- paste("delta", i, sep = ".")
+    #assign(nam1,results_tr$delta)
+    # nam2 <- paste("theta_par", i, sep = ".")
+    #assign(nam2,results_tr$beta)
+    theta_1[i]<-results_tr$beta[1]
+    theta_all<-results_tr$beta
+    delta<-results_tr$delta
+    theta<-cbind(theta,theta_all)
+    delta_mat<-cbind(delta_mat,delta)
+    se[i]<-results_tr$se[1]
+    ob_group<-opt_group(Y,X,Ybar_gt,Xbar_gt,G_star[i],theta,sigma2,N,t,K,delta,gi_class)
+    BIC[i]=ob_group$BIC
+    obj[i]=ob_group$obj
+  }
+  write.table(theta_1,file=paste0(N,"theta_1_rep",sep=""),col.names = F,append=TRUE)
+  write.table(theta,file=paste0(N,"theta_rep",sep=""),col.names = F,append=TRUE)
+  write.table(se,file=paste0(N,"se_rep",sep=""),col.names = F,append=TRUE)
+  write.table(delta_mat,file=paste0(N,"delta_mat_rep",sep=""),col.names = F,append=TRUE)
+  write.table(BIC,file=paste0(N,"BIC",sep=""),col.names = F,append=TRUE)
+  print(j)
+  #}
+  #main_2(DAtA)
+}
+
+#####Record for all files the fixed effects and OLS estimator#######
+t=10
+filenames <- list.files(pattern="1500_data.csv")
+j=1
+for(j in 1:length(filenames))
+{
+  DAtA<-read.csv(filenames[j])
+  X0 = cbind(DAtA$V4 ,DAtA[,9:18])
+  Y0 = DAtA$Y
+  XX = X0#; % Useful if X0 contains additional variables. Change to number of variables used in regression
+  YY = Y0
+  X = as.matrix(XX);
+  #X1<-as.matrix(X[,1])
+  Y = YY;
+  K = ifelse(dim(X)[2]>1,dim(X)[2],1)# 1 in our case, because only one covariate size, otherwise dim(X,2);##
+  N = length(Y)/t##number of observations
+  df<-data.frame(Y,X)
+  result_0<-lm(Y~X,data=df)
+  coeff_0<-result_0$coeff[2]
+  # p_val<-summary(result_0)$coefficients[2,4] 
+  se.ols<-coef(summary(result_0))[2, "Std. Error"]
+  ols<-t(c(coeff_0,se.ols))
+  df<-data.frame(df,DAtA$V2,DAtA$V3)
+  # ####Estimate the fixed effect model###########################################################
+  fe_estim <- plm(Y~X,data=df,index = c("DAtA.V2","DAtA.V3"), model = "within",effect="twoways")###fixed effects 
+  # fe_estim <- plm(Y~X,data=df,index = c("ID","year"), model = "within",effect="twoways")###fixed effects 
+  fixef(fe_estim)
+  fe_coef<-fe_estim$coeff
+  wi_summary=summary(fe_estim)
+  pval <- wi_summary[["coefficients"]][ , "Pr(>|t|)"]
+  se.fe<-coef(summary(fe_estim))[, "Std. Error"]
+  fe<-t(c(fe_coef,se.fe,pval))
+  write.table(fe,file=paste0(N,"fe",sep=""),col.names = F,append=TRUE)
+  write.table(ols,file=paste0(N,"ols",sep=""),col.names = F,append=TRUE)
+  print(j)
+  # colSums(summary(fixef(fe_estim))[ , c("Estimate", "Pr(>|t|)")]) # only estimates and p-values
+}
+
+
+
+
+
 
 

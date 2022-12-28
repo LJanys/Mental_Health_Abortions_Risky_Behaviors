@@ -1,4 +1,20 @@
 
+sim.data.fun<-function(seed.vec){
+  seed=seed.vec
+  result<-group.fun(beta_age,lead,lag,ll)
+  GM=result$GM
+  alpha_gi=result$alpha_gi
+  dummies=result$dummies
+  alpha=result$alpha
+  df<-result$df
+  tic("sleeping")
+  print("falling asleep...")
+  #simu_fun(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
+  simu_fun_hs(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha_i,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm,hs=1)
+  print("...waking up")
+  toc()
+}
+
 BM_fun<-function(G,sim=3,t,X,Y)#The main estimator, including standard errors. 
 {
   #######This function code was adapted to R from the Matlab code by Bonhomme and Manresa (2015) grouped fixed-effects estimator###
@@ -21,6 +37,7 @@ BM_fun<-function(G,sim=3,t,X,Y)#The main estimator, including standard errors.
   X_old<-X
   Y[is.na(Y)==1]=0
   X[is.na(X)==1]=0
+  DAtA<-cbind(X,Y)
   DAtA_nonmiss=DAtA
   DAtA_nonmiss[is.na(DAtA_nonmiss)==1]=0
   gi_auxaux=matrix(0,N,G)
@@ -387,27 +404,41 @@ group.fun<-function(beta_age,lead,lag,ll){
 }
 
 
-simu_fun<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
+simu_fun_hs<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha_i,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm,hs=T)
 {
   X_t<-matrix(rep(rbinom(n*t,1,0.5),t),n,t)
-  X_p<-matrix(NA,nrow=n*t,ncol=t)##This generates some exogenous, time-constant regressors.
+  X_p<-matrix(NA,nrow=n*t,ncol=t)
   for(i in 1:t)
   {
     X_p[,i]<-rep(X_t[,i],each=t)
   }
-  ######make long versions of the individual fixed effects and the group####  
-  alpha=matrix(rep(t(alpha),n),ncol=ncol(alpha),byrow=TRUE)
-  GM=rep(GM,each=t)
+  names_X_p<- sprintf("X%d",seq(1:dim(X_p)[2]))###names for other covariates
+  #######Construct the final data matrix################
+  ###the alpha is supposed to be the individual fixed effect, potentially
+  #####re-write this to make it clearer ###
+  for(i in 1:n)
+  {
+    if(i==1)
+    {
+      X1<-cbind(rep(i,t),1:t,rep(alpha_i[i],t),rep(GM[i],t),alpha_gi[,GM[i]])
+    }
+    else{
+      X1<-rbind(X1,cbind(rep(i,t),1:t, alpha_i[i],rep(GM[i],t),alpha_gi[,GM[i]]))
+    }
+  }
+  names_X1<- c("i","t","alphai","gi", "alpha_gi")
+  X1<-cbind(X1,X_p)
   Y<-c()
   k<-n*t
   pi_x=c()####empty vector generate the predicted probabilities that are bounded by 0 and 1######################
+  ###maybe add a constant? I will try it. 
+  ### 
   Y_star<-c()##Potentially latent  model/predicted values, otherwise actual dependent var value####  
-  ###transform the 
   for(i in 1:k)
   {
-    Y_star[i]=dummies.age[i,]%*%beta_age_2+dummies_t[i,]%*%beta_time+beta*df[i,3]+beta_alpha*alpha[i,GM[i]]+t(X_p[i,])%*%beta1+t(df[i,4:(4+lead-1)])%*%beta_lead+t(df[i,(4+lead):(4+lead+lag-1)])%*%beta_lag+lpm*runif(1,-0.5,0.5)+(1-lpm)*rnorm(1,0,1)
-    #######age_dummies+ time dummies+main effect+
+    Y_star[i]=dummies.age[i,]%*%beta_age_2+dummies_t[i,]%*%beta_time+beta[X1[i,2]]*as.numeric(df[i,3])+beta_alpha*X1[i,5]+t(X_p[i,])%*%beta1+t(as.numeric(df[i,4:(4+lead-1)]))%*%beta_lead+t(as.numeric(df[i,(4+lead):(4+lead+lag-1)]))%*%beta_lag+lpm*runif(1,-0.5,0.5)+(1-lpm)*rnorm(1,0,1)
     pi_x[i]=Y_star[i]
+    
     if(Y_star[i]<0)
     {
       pi_x[i]=0
@@ -416,16 +447,202 @@ simu_fun<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df
     {
       pi_x[i]=1
     }
-    Y[i]=rbinom(1, size=1, prob=pi_x[i])
+    Y[i]=rbinom(1, size=1, prob=as.numeric(pi_x[i]))
   }
   print(sum(Y==1))
-  
-  #print(cor(X1[,3],X1[,6]))####this gives the correlation between the event (value) and the unobserved 
-  # plot(density(Y_star))
+  print(cor(df[,3],X1[,5]))##correlation of treatment and time-varying unobserved heterogeneity. 
+  plot(density(Y_star))
   ##############without lpm, Y is the actual values, with lpm=1: Y is a binary value, generated from the latent model##################
   ifelse(lpm==1,Y<-Y, Y<-Y_star)
-  df_result<-as.data.frame(cbind(Y,df))
+  
+  df_full<-as.data.frame(cbind(Y,X1,df[,3:dim(df)[2]]))
+  names_df<-c("Tr",sprintf("lead%d",seq(1:lead)),sprintf("lag%d",seq(1:lag)))
+  
+  names(df_full)<-c("Y",names_X1,names_X_p,names_df)
+  
   ######save the data csv forma###################################################################################################################################
+  ######save the data csv forma###################################################################################################################################
+  write.csv(df_full,file=paste0(n,"_data_","hs_", hs==T,"_",ll,"_",lpm,"_",seed,".csv",sep=""),row.names=F) 
   #write.csv(df,file=here("Data_Simulation",paste0(seed,n,"_",beta==0,"_",ll,"_",lpm,"_", "_data_lag.csv",sep="")))###Comment out if not want to save the data set
-  return(df_result=df_result)
+  # write.csv(df,file=paste0(n,"_","data_",beta==0,"_",ll,"_",lpm,"_",seed,"_data_lag.csv",sep="")) 
+  return(df=df)
 }
+
+
+
+simu_fun_gs<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha_i,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm,gs=T)
+{
+  X_t<-matrix(rep(rbinom(n*t,1,0.5),t),n,t)
+  X_p<-matrix(NA,nrow=n*t,ncol=t)
+  for(i in 1:t)
+  {
+    X_p[,i]<-rep(X_t[,i],each=t)
+  }
+  names_X_p<- sprintf("X%d",seq(1:dim(X_p)[2]))###names for other covariates
+  #######Construct the final data matrix################
+  ###the alpha is supposed to be the individual fixed effect, potentially
+  #####re-write this to make it clearer ###
+  for(i in 1:n)
+  {
+    if(i==1)
+    {
+      X1<-cbind(rep(i,t),1:t,rep(alpha_i[i],t),rep(GM[i],t),alpha_gi[,GM[i]])
+    }
+    else{
+      X1<-rbind(X1,cbind(rep(i,t),1:t, alpha_i[i],rep(GM[i],t),alpha_gi[,GM[i]]))
+    }
+  }
+  names_X1<- c("i","t","alphai","gi", "alpha_gi")
+  X1<-cbind(X1,X_p)
+  Y<-c()
+  k<-n*t
+  pi_x=c()####empty vector generate the predicted probabilities that are bounded by 0 and 1######################
+  ###maybe add a constant? I will try it. 
+  ### 
+  Y_star<-c()##Potentially latent  model/predicted values, otherwise actual dependent var value####  
+  for(i in 1:k)
+  {
+    Y_star[i]=dummies.age[i,]%*%beta_age_2+dummies_t[i,]%*%beta_time+beta[X1[i,4]]*as.numeric(df[i,3])+beta_alpha*X1[i,5]+t(X_p[i,])%*%beta1+t(as.numeric(df[i,4:(4+lead-1)]))%*%beta_lead+t(as.numeric(df[i,(4+lead):(4+lead+lag-1)]))%*%beta_lag+lpm*runif(1,-0.5,0.5)+(1-lpm)*rnorm(1,0,1)
+    pi_x[i]=Y_star[i]
+    
+    if(Y_star[i]<0)
+    {
+      pi_x[i]=0
+    }
+    if(Y_star[i]>1)
+    {
+      pi_x[i]=1
+    }
+    Y[i]=rbinom(1, size=1, prob=as.numeric(pi_x[i]))
+  }
+  print(sum(Y==1))
+  print(cor(df[,3],X1[,5]))##correlation of treatment and time-varying unobserved heterogeneity. 
+  plot(density(Y_star))
+  ##############without lpm, Y is the actual values, with lpm=1: Y is a binary value, generated from the latent model##################
+  ifelse(lpm==1,Y<-Y, Y<-Y_star)
+
+  df_full<-as.data.frame(cbind(Y,X1,df[,3:dim(df)[2]]))
+  names_df<-c("Tr",sprintf("lead%d",seq(1:lead)),sprintf("lag%d",seq(1:lag)))
+  
+  names(df_full)<-c("Y",names_X1,names_X_p,names_df)
+
+  ######save the data csv forma###################################################################################################################################
+  ######save the data csv forma###################################################################################################################################
+  write.csv(df_full,file=paste0(n,"_data_","gs_", gs==T,"_",ll,"_",lpm,"_",seed,".csv",sep=""),row.names=F) 
+    #write.csv(df,file=here("Data_Simulation",paste0(seed,n,"_",beta==0,"_",ll,"_",lpm,"_", "_data_lag.csv",sep="")))###Comment out if not want to save the data set
+ # write.csv(df,file=paste0(n,"_","data_",beta==0,"_",ll,"_",lpm,"_",seed,"_data_lag.csv",sep="")) 
+  return(df=df)
+}
+
+
+simu_fun_2<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha_i,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
+{
+  X_t<-matrix(rep(rbinom(n*t,1,0.5),t),n,t)
+  X_p<-matrix(NA,nrow=n*t,ncol=t)
+  for(i in 1:t)
+  {
+    X_p[,i]<-rep(X_t[,i],each=t)
+  }
+  names_X_p<- sprintf("X%d",seq(1:dim(X_p)[2]))###names for other covariates
+  
+  
+  #######Construct the final data matrix################
+  
+  ###the alpha is supposed to be the individual fixed effect, potentially
+  #####re-write this to make it clearer ###
+  for(i in 1:n)
+  {
+    if(i==1)
+    {
+      X1<-cbind(rep(i,t),1:t,rep(alpha_i[i],t),rep(GM[i],t),alpha_gi[,GM[i]])
+    }
+    else{
+      X1<-rbind(X1,cbind(rep(i,t),1:t, alpha_i[i],rep(GM[i],t),alpha_gi[,GM[i]]))
+    }
+  }
+  names_X1<- c("i","t","alphai","gi", "alpha_gi")
+  X1<-cbind(X1,X_p)
+  Y<-c()
+  k<-n*t
+  pi_x=c()####empty vector generate the predicted probabilities that are bounded by 0 and 1######################
+  ###maybe add a constant? I will try it. 
+  ### 
+  Y_star<-c()##Potentially latent  model/predicted values, otherwise actual dependent var value####  
+  for(i in 1:k)
+  {
+    Y_star[i]=dummies.age[i,]%*%beta_age_2+dummies_t[i,]%*%beta_time+beta*as.numeric(df[i,3])+beta_alpha*X1[i,5]+t(X_p[i,])%*%beta1+t(as.numeric(df[i,4:(4+lead-1)]))%*%beta_lead+t(as.numeric(df[i,(4+lead):(4+lead+lag-1)]))%*%beta_lag+lpm*runif(1,-0.5,0.5)+(1-lpm)*rnorm(1,0,1)
+    pi_x[i]=Y_star[i]
+    
+    if(Y_star[i]<0)
+    {
+      pi_x[i]=0
+    }
+    if(Y_star[i]>1)
+    {
+      pi_x[i]=1
+    }
+    Y[i]=rbinom(1, size=1, prob=as.numeric(pi_x[i]))
+  }
+  print(sum(Y==1))
+  print(cor(df[,3],X1[,5]))##correlation of treatment and time-varying unobserved heterogeneity. 
+  plot(density(Y_star))
+  ##############without lpm, Y is the actual values, with lpm=1: Y is a binary value, generated from the latent model##################
+  ifelse(lpm==1,Y<-Y, Y<-Y_star)
+  
+  df_full<-as.data.frame(cbind(Y,X1,df[,3:dim(df)[2]]))
+  names_df<-c("Tr",sprintf("lead%d",seq(1:lead)),sprintf("lag%d",seq(1:lag)))
+  
+  names(df_full)<-c("Y",names_X1,names_X_p,names_df)
+  
+  ######save the data csv forma###################################################################################################################################
+  ######save the data csv forma###################################################################################################################################
+  write.csv(df_full,file=paste0(n,"_data_","hm","_",ll,"_",lpm,"_",seed,".csv",sep=""),row.names=F) 
+  
+  #write.csv(df,file=here("Data_Simulation",paste0(seed,n,"_",beta==0,"_",ll,"_",lpm,"_", "_data_lag.csv",sep="")))###Comment out if not want to save the data set
+  # write.csv(df,file=paste0(n,"_","data_",beta==0,"_",ll,"_",lpm,"_",seed,"_data_lag.csv",sep="")) 
+  return(df=df)
+}
+
+# simu_fun<-function(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
+# {
+#   X_t<-matrix(rep(rbinom(n*t,1,0.5),t),n,t)
+#   X_p<-matrix(NA,nrow=n*t,ncol=t)##This generates some exogenous, time-constant regressors.
+#   for(i in 1:t)
+#   {
+#     X_p[,i]<-rep(X_t[,i],each=t)
+#   }
+#   ######make long versions of the individual fixed effects and the group####  
+#   alpha=matrix(rep(t(alpha),n),ncol=ncol(alpha),byrow=TRUE)
+#   GM=rep(GM,each=t)
+#   Y<-c()
+#   k<-n*t
+#   pi_x=c()####empty vector generate the predicted probabilities that are bounded by 0 and 1######################
+#   Y_star<-c()##Potentially latent  model/predicted values, otherwise actual dependent var value####  
+#   ###transform the 
+#   for(i in 1:k)
+#   {
+#     Y_star[i]=dummies.age[i,]%*%beta_age_2+dummies_t[i,]%*%beta_time+beta*df[i,3]+beta_alpha*alpha[i,GM[i]]+t(X_p[i,])%*%beta1+t(df[i,4:(4+lead-1)])%*%beta_lead+t(df[i,(4+lead):(4+lead+lag-1)])%*%beta_lag+lpm*runif(1,-0.5,0.5)+(1-lpm)*rnorm(1,0,1)
+#     #######age_dummies+ time dummies+main effect+
+#     pi_x[i]=Y_star[i]
+#     if(Y_star[i]<0)
+#     {
+#       pi_x[i]=0
+#     }
+#     if(Y_star[i]>1)
+#     {
+#       pi_x[i]=1
+#     }
+#     Y[i]=rbinom(1, size=1, prob=as.numeric(pi_x[i]))
+#   }
+#   print(sum(Y==1))
+#   
+#   #print(cor(X1[,3],X1[,6]))####this gives the correlation between the event (value) and the unobserved 
+#   # plot(density(Y_star))
+#   ##############without lpm, Y is the actual values, with lpm=1: Y is a binary value, generated from the latent model##################
+#   ifelse(lpm==1,Y<-Y, Y<-Y_star)
+#   df_result<-as.matrix(cbind(Y,df))
+#   ######save the data csv forma###################################################################################################################################
+#   write.csv(df_result,file=paste0(n,"_data_",beta==0,"_",ll,"_",lpm,"_",seed,".csv",sep="")) 
+#   #here("Data_Simulation",paste0(seed,n,"_",beta==0,"_",ll,"_",lpm,"_","_data_lag.csv",sep="")))###Comment out if not want to save the data set
+#   return(df_result=df_result)
+# }

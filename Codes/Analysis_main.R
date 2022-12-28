@@ -94,7 +94,7 @@ main.ana<-function(n,b,ll)
  
 }
 
-main.ana(1000,0,ll=1)
+main.ana(1000,0,ll=0)
 main.ana(1500,0,ll=1)
 main.ana(2000,0,ll=1)
 main.ana(2500,0,ll=1)
