@@ -1,19 +1,5 @@
 
-sim.data.fun<-function(seed.vec){
-  seed=seed.vec
-  result<-group.fun(beta_age,lead,lag,ll)
-  GM=result$GM
-  alpha_gi=result$alpha_gi
-  dummies=result$dummies
-  alpha=result$alpha
-  df<-result$df
-  tic("sleeping")
-  print("falling asleep...")
-  #simu_fun(n,seed,beta,beta1,beta_alpha,t,G,GM,alpha_gi,alpha,age_new,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm)
-  simu_fun_hs(n,seed,beta,beta1,beta_alpha,t,G,GM,dummies, alpha_gi,alpha_i,df,beta_lead,beta_lag,lead,lag,dummies_t,lpm,hs=1)
-  print("...waking up")
-  toc()
-}
+
 
 BM_fun<-function(G,sim=3,t,X,Y)#The main estimator, including standard errors. 
 {
